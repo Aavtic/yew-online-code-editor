@@ -1,3 +1,6 @@
+use yew_online_compiler::App;
+
+
 fn main() {
-    println!("Hello, world!");
+    yew::Renderer::<App>::new().render();
 }
