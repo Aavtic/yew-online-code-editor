@@ -9,13 +9,14 @@ use crate::components::atoms::{
     language_selector::LanguageSelector
 };
 use gloo::console::log;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use serde_json::{json, to_string_pretty};
+use reqwasm::http::Request;
 
 
-#[derive(Default, Clone, Serialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 struct Data {
     pub code: String,
-    pub button_clicked: u32,
     pub language: String,
 }
 
@@ -39,21 +40,30 @@ pub fn main_page() -> Html {
             }
         "#
         ).unwrap();
-    let state = use_state(|| Data::default());
+    let state = use_state(|| Data{language:"rust".to_string(), ..Data::default()});
 
     let cloned_state = state.clone();
-    let username_changed = Callback::from(move |code: String| {
+    let editor_content_callback = Callback::from(move |code: String| {
         cloned_state.set(
             Data {code, ..cloned_state.deref().clone()}
         )
     });
 
-    let cloned_state = state.clone();
-    let button_callback = Callback::from(move |_| {
-        let current_state = cloned_state.deref();
-        log!(serde_json::to_string_pretty(current_state).unwrap());
-    });
-
+    let button_callback =  {
+        let state = state.deref().clone();
+        Callback::from(move |_| {
+            let state = state.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let response = Request::post("http://127.0.0.1:8081/api/v1")
+                    .header("content-type", "application/json")
+                    .body(to_string_pretty(&state).unwrap())
+                    .send()
+                    .await
+                    .unwrap();
+                log!(response.text().await.unwrap());
+            });
+        })
+    };
     let cloned_state = state.clone();
     let select_callback = Callback::from( move |language: String| {
         log!("selected languages is ", &language);
@@ -68,7 +78,7 @@ pub fn main_page() -> Html {
             <MainTitle/>
             <MainHeading/>
             <br/>
-            <TextArea name="Code Editor" handle_onchange = {username_changed} />
+            <TextArea name="Code Editor" handle_onchange = {editor_content_callback} />
             <br/>
             <RunButton label="Submit" onclick={button_callback}/>
             <LanguageSelector languages={languages} default="rust" callback={select_callback}/>
